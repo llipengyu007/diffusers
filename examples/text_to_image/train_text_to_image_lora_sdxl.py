@@ -585,7 +585,9 @@ def main(args):
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     # The VAE is in float32 to avoid NaN losses.
-    unet.to(accelerator.device, dtype=weight_dtype)
+    # unet.to(accelerator.device, dtype=weight_dtype)
+    unet.to(accelerator.device)
+
     if args.pretrained_vae_model_name_or_path is None:
         vae.to(accelerator.device, dtype=torch.float32)
     else:
@@ -1080,6 +1082,8 @@ def main(args):
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(params_to_optimize, args.max_grad_norm)
+                    # params_to_clip = unet.parameters()
+                    # accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -1118,6 +1122,7 @@ def main(args):
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            print("iter: {}, loss: {}".format(global_step, loss.detach().item()))
             progress_bar.set_postfix(**logs)
 
             if global_step >= args.max_train_steps:
@@ -1148,7 +1153,8 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                with torch.cuda.amp.autocast():
+                if True:
+                # with torch.cuda.amp.autocast():
                     images = [
                         pipeline(**pipeline_args, generator=generator).images[0]
                         for _ in range(args.num_validation_images)

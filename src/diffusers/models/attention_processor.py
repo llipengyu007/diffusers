@@ -1157,6 +1157,9 @@ class XFormersAttnProcessor:
         key = attn.head_to_batch_dim(key).contiguous()
         value = attn.head_to_batch_dim(value).contiguous()
 
+        if query.dtype != key.dtype:
+            query = query.to(key.dtype)
+
         hidden_states = xformers.ops.memory_efficient_attention(
             query, key, value, attn_bias=attention_mask, op=self.attention_op, scale=attn.scale
         )
