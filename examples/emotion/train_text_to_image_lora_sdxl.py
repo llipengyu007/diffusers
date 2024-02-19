@@ -206,6 +206,12 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--proportion_empty_prompts",
+        type=float,
+        default=0,
+        help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
+    )
+    parser.add_argument(
         "--output_dir",
         type=str,
         default="sd-model-finetuned-lora",
@@ -771,7 +777,9 @@ def main(args):
     def tokenize_captions(examples, is_train=True):
         captions = []
         for caption in examples[caption_column]:
-            if isinstance(caption, str):
+            if random.random() < args.proportion_empty_prompts:
+                captions.append("")
+            elif isinstance(caption, str):
                 captions.append(caption)
             elif isinstance(caption, (list, np.ndarray)):
                 # take a random caption if there are multiple
@@ -782,6 +790,7 @@ def main(args):
                 )
         tokens_one = tokenize_prompt(tokenizer_one, captions)
         tokens_two = tokenize_prompt(tokenizer_two, captions)
+
         return tokens_one, tokens_two
 
     # Preprocessing the datasets.
@@ -934,6 +943,7 @@ def main(args):
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
     first_epoch = 0
+
 
     # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
