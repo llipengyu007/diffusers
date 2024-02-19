@@ -60,8 +60,8 @@ sys.path.append(path)
 
 from data_loader import ImageLabelFolder
 
-import cv2
-cv2.SetNumThreads(0)
+# import cv2
+# cv2.SetNumThreads(0)
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.26.0.dev0")
@@ -998,15 +998,23 @@ def main(args):
                 generator_seed = args.seed if args.seed else 0
                 # generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 generator = torch.Generator(device=accelerator.device).manual_seed(generator_seed)
-                pipeline_args = {"prompt": args.validation_prompt,
-                                 "negative_prompt": args.validation_negative_prompt if args.validation_negative_prompt else None}
+                pipeline_args = {
+                    "prompt": args.validation_prompt,
+                    "negative_prompt": args.validation_negative_prompt if args.validation_negative_prompt else None,
+                    "guidance_scale": 9.0,
+                    "num_inference_steps": 25,
+                    "num_images_per_prompt": args.num_validation_images
+                                 }
 
                 if True:
                     # with torch.cuda.amp.autocast():
-                    images = [
-                        pipeline(**pipeline_args, generator=generator).images[0]
-                        for _ in range(args.num_validation_images)
+                    images = [ img
+                        for img in pipeline(**pipeline_args, generator=generator).images
                     ]
+                    # images = [
+                    #     pipeline(**pipeline_args, generator=generator).images[0]
+                    #     for _ in range(args.num_validation_images)
+                    # ]
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":

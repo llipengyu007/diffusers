@@ -41,7 +41,9 @@ class ImageLabelFolder(data.Dataset):
         def __init__(self, image_path, annotate_path):
             self.image = image_path
             try:
-                self.annotate = json.load(open(annotate_path))
+                check = json.load(open(annotate_path))
+                # self.annotate = annotate_path
+                self.annotate = check
                 if os.path.exists(image_path):
                     self.success = True
             except:
@@ -78,6 +80,7 @@ class ImageLabelFolder(data.Dataset):
 
         img = self.loader(cur_imageLabel.image)
         labels = cur_imageLabel.annotate
+        # labels = json.load(open(cur_imageLabel.annotate))
 
 
         return {"image": img, "annotate":labels}
