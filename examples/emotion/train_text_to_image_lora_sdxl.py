@@ -971,8 +971,17 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
-
-    def validation(iter):
+    pipeline = StableDiffusionXLPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        vae=vae,
+        text_encoder=unwrap_model(text_encoder_one),
+        text_encoder_2=unwrap_model(text_encoder_two),
+        unet=unwrap_model(unet),
+        revision=args.revision,
+        variant=args.variant,
+        torch_dtype=weight_dtype,
+    )
+    def validation(iter, pipeline):
         if accelerator.is_main_process:
             if args.validation_prompt is not None and global_step % args.validation_iters == 0:
                 logger.info(
@@ -980,16 +989,19 @@ def main(args):
                     f" {args.validation_prompt}."
                 )
                 # create pipeline
-                pipeline = StableDiffusionXLPipeline.from_pretrained(
-                    args.pretrained_model_name_or_path,
-                    vae=vae,
-                    text_encoder=unwrap_model(text_encoder_one),
-                    text_encoder_2=unwrap_model(text_encoder_two),
-                    unet=unwrap_model(unet),
-                    revision=args.revision,
-                    variant=args.variant,
-                    torch_dtype=weight_dtype,
-                )
+                # pipeline = StableDiffusionXLPipeline.from_pretrained(
+                #     args.pretrained_model_name_or_path,
+                #     vae=vae,
+                #     text_encoder=unwrap_model(text_encoder_one),
+                #     text_encoder_2=unwrap_model(text_encoder_two),
+                #     unet=unwrap_model(unet),
+                #     revision=args.revision,
+                #     variant=args.variant,
+                #     torch_dtype=weight_dtype,
+                # )
+                pipeline.vae,pipeline.unet = vae,unwrap_model(unet)
+                pipeline.text_encoder, pipeline.text_encoder_2 = \
+                    unwrap_model(text_encoder_one),unwrap_model(text_encoder_two)
 
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
@@ -1035,7 +1047,7 @@ def main(args):
 
 
 
-    validation(global_step)
+    validation(global_step, pipeline)
     for epoch in range(first_epoch, args.num_train_epochs):
 
         unet.train()
@@ -1191,7 +1203,7 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-            validation(global_step)
+            validation(global_step,pipeline)
             # if accelerator.is_main_process:
             #     if args.validation_prompt is not None and global_step % args.validation_iters == 0:
             #         logger.info(
