@@ -785,8 +785,10 @@ def main(args):
                 # take a random caption if there are multiple
                 captions.append(random.choice(caption) if is_train else caption[0])
             else:
-                raise ValueError(
-                    f"Caption column `{caption_column}` should contain either strings or lists of strings."
+                captions.append("")
+                #raise ValueError(
+                print(
+                    f"Caption column `{caption_column}` should contain either strings or lists of strings but get {type(caption)}."
                 )
         tokens_one = tokenize_prompt(tokenizer_one, captions)
         tokens_two = tokenize_prompt(tokenizer_two, captions)
@@ -1051,7 +1053,11 @@ def main(args):
                                 ]
                             }
                         )
-
+                save_root = os.path.join(args.output_dir, "img")
+                if os.path.exists(save_root) == False:
+                    os.system("mkdir -p {}".format(save_root))
+                for ind, img in enumerate(images):
+                    img.save(os.path.join(save_root, "iter_{}_{}.jpg".format(iter, ind)))
                 del pipeline
                 torch.cuda.empty_cache()
 
