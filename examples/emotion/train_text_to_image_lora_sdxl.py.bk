@@ -212,12 +212,6 @@ def parse_args(input_args=None):
         help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
     )
     parser.add_argument(
-        "--proportion_emotion_prompts",
-        type=float,
-        default=0,
-        help="Proportion of Emotion usage",
-    )
-    parser.add_argument(
         "--output_dir",
         type=str,
         default="sd-model-finetuned-lora",
@@ -776,7 +770,7 @@ def main(args):
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
     # image_column, caption_column = args.image_column, args.caption_column
-    image_column, caption_column, emotion_column = "image", "text", "emotion"
+    image_column, caption_column = "image", "text"
 
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.
@@ -799,25 +793,7 @@ def main(args):
         tokens_one = tokenize_prompt(tokenizer_one, captions)
         tokens_two = tokenize_prompt(tokenizer_two, captions)
 
-        emotions = []
-        for emotion in examples[emotion_column]:
-            if random.random() < args.proportion_empty_prompts:
-                emotions.append("")
-            elif isinstance(emotion, str):
-                emotions.append(emotion)
-            elif isinstance(emotion, (list, np.ndarray)):
-                # take a random caption if there are multiple
-                emotions.append(random.choice(emotion) if is_train else emotion[0])
-            else:
-                emotions.append("")
-                # raise ValueError(
-                print(
-                    f"Caption column `{emotion_column}` should contain either strings or lists of strings but get {type(caption)}."
-                )
-        emotions_one = tokenize_prompt(tokenizer_one, emotions)
-        emotions_two = tokenize_prompt(tokenizer_two, emotions)
-
-        return tokens_one, tokens_two, emotions_one, emotions_two
+        return tokens_one, tokens_two
 
     # Preprocessing the datasets.
     train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
@@ -831,11 +807,10 @@ def main(args):
     )
 
     def pre_PY_format_transport(examples_ori):
-        examples = {image_column:[], caption_column:[], emotion_column:[]}
+        examples = {image_column:[], caption_column:[]}
         for example in examples_ori:
             examples[image_column].append(example['image'])
             examples[caption_column].append(example['annotate']['caption'])
-            examples[emotion_column].append(example['annotate']['emotion'])
         return examples
 
     def post_PY_format_transport(examples_ori):
@@ -880,11 +855,9 @@ def main(args):
         examples["original_sizes"] = original_sizes
         examples["crop_top_lefts"] = crop_top_lefts
         examples["pixel_values"] = all_images
-        tokens_one, tokens_two, emotion_one, emotion_two = tokenize_captions(examples)
+        tokens_one, tokens_two = tokenize_captions(examples)
         examples["input_ids_one"] = tokens_one
         examples["input_ids_two"] = tokens_two
-        examples["emotion_ids_one"] = emotion_one
-        examples["emotion_ids_two"] = emotion_two
         return examples
 
     with accelerator.main_process_first():
@@ -906,14 +879,10 @@ def main(args):
         crop_top_lefts = [example["crop_top_lefts"] for example in examples]
         input_ids_one = torch.stack([example["input_ids_one"] for example in examples])
         input_ids_two = torch.stack([example["input_ids_two"] for example in examples])
-        emotion_ids_one = torch.stack([example["emotion_ids_one"] for example in examples])
-        emotion_ids_two = torch.stack([example["emotion_ids_two"] for example in examples])
         return {
             "pixel_values": pixel_values,
             "input_ids_one": input_ids_one,
             "input_ids_two": input_ids_two,
-            "emotion_ids_one": emotion_ids_one,
-            "emotion_ids_two": emotion_ids_two,
             "original_sizes": original_sizes,
             "crop_top_lefts": crop_top_lefts,
         }
@@ -1063,29 +1032,17 @@ def main(args):
 
                 if True:
                     # with torch.cuda.amp.autocast():
-                    images_caption = [ img
+                    images = [ img
                         for img in pipeline(**pipeline_args, generator=generator).images
                     ]
-
-                    pipeline_args["prompt"] = "Joy and Happiness, masterpiece, photographic, intricate detail, Ultra Detailed hyperrealistic real photo, 8k, high quality, hdr, studio lighting, professional, trending on artstation,"
-                    images_emotion_1 = [img
-                        for img in pipeline(**pipeline_args, generator=generator).images
-                    ]
-                    pipeline_args[
-                        "prompt"] = "Sadness, masterpiece, photographic, intricate detail, Ultra Detailed hyperrealistic real photo, 8k, high quality, hdr, studio lighting, professional, trending on artstation,"
-                    images_emotion_2 = [img
-                        for img in pipeline(**pipeline_args, generator=generator).images
-                    ]
-
+                    # images = [
+                    #     pipeline(**pipeline_args, generator=generator).images[0]
+                    #     for _ in range(args.num_validation_images)
+                    # ]
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
-                        np_images_caption = np.stack([np.asarray(img) for img in images_caption])
-                        np_images_emotion_1 = np.stack([np.asarray(img) for img in images_emotion_1])
-                        np_images_emotion_2 = np.stack([np.asarray(img) for img in images_emotion_2])
-
-                        np_images = np.concatenate([np_images_caption, np_images_emotion_1, np_images_emotion_2], axis=1)
-
+                        np_images = np.stack([np.asarray(img) for img in images])
                         tracker.writer.add_images("validation", np_images, iter, dataformats="NHWC")
                     if tracker.name == "wandb":
                         tracker.log(
@@ -1099,12 +1056,8 @@ def main(args):
                 save_root = os.path.join(args.output_dir, "img")
                 if os.path.exists(save_root) == False:
                     os.system("mkdir -p {}".format(save_root))
-                for ind, img in enumerate(images_caption):
-                    img.save(os.path.join(save_root, "iter_caption_{}_{}.jpg".format(iter, ind)))
-                for ind, img in enumerate(images_emotion_1):
-                    img.save(os.path.join(save_root, "iter_emotion1_{}_{}.jpg".format(iter, ind)))
-                for ind, img in enumerate(images_emotion_2):
-                    img.save(os.path.join(save_root, "iter_emotion2_{}_{}.jpg".format(iter, ind)))
+                for ind, img in enumerate(images):
+                    img.save(os.path.join(save_root, "iter_{}_{}.jpg".format(iter, ind)))
                 del pipeline
                 torch.cuda.empty_cache()
 
@@ -1166,24 +1119,12 @@ def main(args):
 
                 # Predict the noise residual
                 unet_added_conditions = {"time_ids": add_time_ids}
-                if random.random() < args.proportion_emotion_prompts:
-                    prompt_embeds, pooled_prompt_embeds = encode_prompt(
-                        text_encoders=[text_encoder_one, text_encoder_two],
-                        tokenizers=None,
-                        prompt=None,
-                        text_input_ids_list=[batch["emotion_ids_one"], batch["emotion_ids_two"]],
-                    )
-                    print("Emotion Prompts")
-                else:
-                    prompt_embeds, pooled_prompt_embeds = encode_prompt(
-                        text_encoders=[text_encoder_one, text_encoder_two],
-                        tokenizers=None,
-                        prompt=None,
-                        text_input_ids_list=[batch["input_ids_one"], batch["input_ids_two"]],
-                    )
-                    print("Caption Prompts")
-
-
+                prompt_embeds, pooled_prompt_embeds = encode_prompt(
+                    text_encoders=[text_encoder_one, text_encoder_two],
+                    tokenizers=None,
+                    prompt=None,
+                    text_input_ids_list=[batch["input_ids_one"], batch["input_ids_two"]],
+                )
                 unet_added_conditions.update({"text_embeds": pooled_prompt_embeds})
                 model_pred = unet(
                     noisy_model_input,
@@ -1279,7 +1220,55 @@ def main(args):
                 break
 
             validation(global_step,pipeline)
-
+            # if accelerator.is_main_process:
+            #     if args.validation_prompt is not None and global_step % args.validation_iters == 0:
+            #         logger.info(
+            #             f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+            #             f" {args.validation_prompt}."
+            #         )
+            #         # create pipeline
+            #         pipeline = StableDiffusionXLPipeline.from_pretrained(
+            #             args.pretrained_model_name_or_path,
+            #             vae=vae,
+            #             text_encoder=unwrap_model(text_encoder_one),
+            #             text_encoder_2=unwrap_model(text_encoder_two),
+            #             unet=unwrap_model(unet),
+            #             revision=args.revision,
+            #             variant=args.variant,
+            #             torch_dtype=weight_dtype,
+            #         )
+            #
+            #         pipeline = pipeline.to(accelerator.device)
+            #         pipeline.set_progress_bar_config(disable=True)
+            #
+            #         # run inference
+            #         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+            #         pipeline_args = {"prompt": args.validation_prompt,
+            #                          "negative_prompt": args.validation_negative_prompt if args.validation_negative_prompt else None}
+            #
+            #         if True:
+            #         # with torch.cuda.amp.autocast():
+            #             images = [
+            #                 pipeline(**pipeline_args, generator=generator).images[0]
+            #                 for _ in range(args.num_validation_images)
+            #             ]
+            #
+            #         for tracker in accelerator.trackers:
+            #             if tracker.name == "tensorboard":
+            #                 np_images = np.stack([np.asarray(img) for img in images])
+            #                 tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+            #             if tracker.name == "wandb":
+            #                 tracker.log(
+            #                     {
+            #                         "validation": [
+            #                             wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+            #                             for i, image in enumerate(images)
+            #                         ]
+            #                     }
+            #                 )
+            #
+            #         del pipeline
+            #         torch.cuda.empty_cache()
 
     # Save the lora layers
     accelerator.wait_for_everyone()

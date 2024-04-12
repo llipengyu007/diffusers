@@ -59,7 +59,7 @@ class ImageLabelFolder(data.Dataset):
         for line in tqdm(content):
             line = line.strip()
 
-            img_path = line.replace('_emotion.json', '.jpg')
+            img_path = line.replace('_emotion_score.json', '.jpg')
             img_path = os.path.join(img_root, img_path)
             annotate_path = os.path.join(annotate_root, line)
 
